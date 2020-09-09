@@ -17,7 +17,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 // UsefulHeaders - adds useful headers to the response send
 func UsefulHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("access-control-allow-origin", "http://localhost:4003")
+		w.Header().Set("access-control-allow-origin", os.Getenv("FRONTEND"))
 
 		if os.Getenv("APP_ENV") == "production" {
 			w.Header().Set("Content-Security-Policy", "default-src 'self';base-uri 'self';block-all-mixed-content;font-src 'self' https: data:;frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests")

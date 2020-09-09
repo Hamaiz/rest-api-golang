@@ -1,17 +1,12 @@
 package helper
 
 import (
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/dchest/uniuri"
 	"github.com/gorilla/mux"
 )
-
-func init() {
-	log.Println("Done")
-}
 
 // AllStaticFiles - serving all the static files
 func AllStaticFiles(r *mux.Router) {
@@ -40,18 +35,20 @@ func JH(h http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-// MethodCheck - check for the right http method
-func MethodCheck(w http.ResponseWriter, r *http.Request, m string) {
-	if r.Method != m {
-		NotAllowed(w)
-		return
-	}
-}
-
 // UniqueName - changes name to unique
 func UniqueName(name string) string {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, " ", "-")
 	name = name + "-" + uniuri.NewLen(6)
 	return name
+}
+
+// UniqueQuestion - changes question to unique question
+func UniqueQuestion(s string) string {
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, "/", " ")
+	s = strings.ReplaceAll(s, "?", "")
+	s = strings.ReplaceAll(s, " ", "-")
+	s = s + "-" + uniuri.NewLen(8)
+	return s
 }

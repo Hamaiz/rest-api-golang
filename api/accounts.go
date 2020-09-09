@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/Hamaiz/go-rest-eg/email"
 	"github.com/Hamaiz/go-rest-eg/helper"
@@ -30,6 +32,9 @@ type AccountDatabase interface {
 	LoginConfirm(e string) bool
 	ConfirmEmail(t string) (bool, error)
 	GetToken(e string) (string, error)
+	ForgotToken(e string, token string) error
+	ConfirmToken(token string) (bool, error)
+	ResetPass(p string, t string) error
 }
 
 // Account - account store struct
@@ -45,11 +50,14 @@ func NewAccountStore(s AccountStore, c AccountDatabase) *Account {
 
 // SignUpHandler - signing in route - /account/signup
 func (s *Account) SignUpHandler(w http.ResponseWriter, r *http.Request) {
-	helper.MethodCheck(w, r, "POST")
+	if r.Method != "POST" {
+		helper.ASM(w, 405, "")
+		return
+	}
 
 	// if already logged in
 	if s.store.AlreadyLoggedIn(r) {
-		helper.UnauthorizedError(w)
+		helper.ASM(w, 401, "")
 		return
 	}
 
@@ -60,21 +68,21 @@ func (s *Account) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	// if empty return error
 	if n == "" || e == "" || p == "" {
-		helper.ForbiddenError(w, "missing credentials")
+		helper.ASM(w, 403, "missing credentials")
 		return
 	}
 
 	// checking if already exists
 	check := s.conn.CheckingExists(e)
 	if check {
-		helper.ForbiddenError(w, "Email already exists")
+		helper.ASM(w, 403, "email already exists")
 		return
 	}
 
 	// bcrypt password - hashing
 	bs, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
 	if err != nil {
-		helper.ServerError(w)
+		helper.ASM(w, 500, "")
 		return
 	}
 
@@ -85,7 +93,8 @@ func (s *Account) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	token := uniuri.NewLen(50)
 
 	// email url
-	url := "http://localhost:9002/account/confirm/" + token
+	host := os.Getenv("URL")
+	url := host + "account/confirm/" + token
 
 	// user model
 	u := model.User{n, e, unique, string(bs)}
@@ -94,27 +103,30 @@ func (s *Account) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	err = s.conn.InsertUser(u, token)
 
 	if err != nil {
-		helper.ServerError(w)
+		helper.ASM(w, 500, "")
 		return
 	}
 
 	// sending email
 	err = email.SignUpEmail(e, n, url)
 	if err != nil {
-		helper.ServerError(w)
+		helper.ASM(w, 500, "")
 		return
 	}
 
-	helper.Ok(w, "verify email to continue")
+	helper.ASM(w, 200, "verify email to continue")
 }
 
 // LogInHandler - logging in route - /account/login
 func (s *Account) LogInHandler(w http.ResponseWriter, r *http.Request) {
-	helper.MethodCheck(w, r, "POST")
+	if r.Method != "POST" {
+		helper.ASM(w, 405, "")
+		return
+	}
 
 	// If already logged in send unauthorizedError
 	if s.store.AlreadyLoggedIn(r) {
-		helper.UnauthorizedError(w)
+		helper.ASM(w, 401, "")
 		return
 	}
 
@@ -124,78 +136,89 @@ func (s *Account) LogInHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Check if empty
 	if e == "" || p == "" {
-		helper.ForbiddenError(w, "Missing Credentials")
+		helper.ASM(w, 403, "missing credentials")
 		return
 	}
 
 	confirm := s.conn.LoginConfirm(e)
 	if !confirm {
-		helper.ForbiddenError(w, "confirm your email to continue")
+		helper.ASM(w, 403, "confirm your email to continue")
 		return
 	}
 
 	u, err := s.conn.GetUserInLogin(e)
 	switch {
 	case err == pgx.ErrNoRows:
-		helper.NotFound(w, r)
+		helper.ASM(w, 404, "")
 		return
 	case err != nil:
-		helper.ServerError(w)
+		helper.ASM(w, 500, "")
 		return
 	}
 
 	// Bcrypt Pasword - Decrypting
 	err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(p))
 	if err != nil {
-		helper.ForbiddenError(w, "Email and/or password do not match")
+		helper.ASM(w, 404, "Email and/or password do not match")
 		return
 	}
 
 	// Create New Session
 	err = s.store.SaveSession(w, r, u.ID)
 	if err != nil {
-		helper.ServerError(w)
+		helper.ASM(w, 500, "")
 		return
 	}
 
-	helper.Ok(w, "logged in successfully")
+	helper.ASM(w, 200, "logged in successfully")
 }
 
 // LogoutHandler - logs user out & removes cookie - /account/logout
 func (s *Account) LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	helper.MethodCheck(w, r, "DELETE")
+	if r.Method != "DELETE" {
+		helper.ASM(w, 405, "")
+		return
+	}
 
 	// if not logged in
 	if !s.store.AlreadyLoggedIn(r) {
-		helper.UnauthorizedError(w)
+		helper.ASM(w, 401, "")
 		return
 	}
 
 	// clean session
 	err := s.store.CleanSession(w, r)
 	if err != nil {
-		helper.NotFound(w, r)
+		helper.ASM(w, 404, "")
 		return
 	}
 
-	helper.Ok(w, "logged out")
+	helper.ASM(w, 200, "logged out")
 }
 
 // GetUserHandler - sends user - /account/getUser
 func (s *Account) GetUserHandler(w http.ResponseWriter, r *http.Request) {
-	helper.MethodCheck(w, r, "GET")
+	if r.Method != "GET" {
+		helper.ASM(w, 405, "")
+		return
+	}
 
 	// get and check for header
 	fgu := r.Header.Get("files-get-user")
 	if fgu == "" {
-		helper.UnauthorizedError(w)
+		helper.ASM(w, 401, "")
+		return
+	}
+
+	if !s.store.AlreadyLoggedIn(r) {
+		helper.ASM(w, 401, "you are not logged in")
 		return
 	}
 
 	// get user id
 	id, err := s.store.GetUser(r)
 	if err != nil {
-		helper.NotFound(w, r)
+		helper.ASM(w, 404, "")
 		return
 	}
 
@@ -203,7 +226,8 @@ func (s *Account) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 	var u model.UserSend
 	u, err = s.conn.GetUser(id)
 	if err != nil {
-		helper.NotFound(w, r)
+		log.Println(err)
+		helper.ASM(w, 404, "")
 		return
 	}
 
@@ -212,11 +236,14 @@ func (s *Account) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 
 // ConfirmEmailHandler - confirms the email - /account/confirm/:token
 func (s *Account) ConfirmEmailHandler(w http.ResponseWriter, r *http.Request) {
-	helper.MethodCheck(w, r, "GET")
+	if r.Method != "GET" {
+		helper.ASM(w, 405, "")
+		return
+	}
 
 	// check if already logged in
 	if s.store.AlreadyLoggedIn(r) {
-		helper.UnauthorizedError(w)
+		helper.ASM(w, 401, "")
 		return
 	}
 
@@ -225,32 +252,189 @@ func (s *Account) ConfirmEmailHandler(w http.ResponseWriter, r *http.Request) {
 	token := param["token"]
 
 	if token == "" {
-		helper.NotFound(w, r)
+		helper.ASM(w, 404, "")
 		return
 	}
 
 	confirm, err := s.conn.ConfirmEmail(token)
 
 	if err != nil {
-		helper.ForbiddenError(w, err.Error())
+		helper.ASM(w, 403, err.Error())
 		return
 	}
 
 	if confirm {
-		helper.Ok(w, "email is confirmed")
+		helper.ASM(w, 200, "email is confirmed")
 		return
 	} else {
-		helper.ForbiddenError(w, "token expired")
+		helper.ASM(w, 403, "token expired")
 		return
+	}
+}
+
+// ForgotHandler - forget handler - @POST - /account/forgot
+func (s *Account) ForgotHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		helper.ASM(w, 405, "")
+		return
+	}
+
+	if s.store.AlreadyLoggedIn(r) {
+		helper.ASM(w, 401, "")
+		return
+	}
+
+	// form value
+	e := r.FormValue("email")
+	if e == "" {
+		helper.ASM(w, 403, "email is empty")
+		return
+	}
+
+	// check if user exist
+	c := s.conn.CheckingExists(e)
+	if !c {
+		helper.ASM(w, 404, "user not found with the email")
+		return
+	}
+
+	// email token
+	token := uniuri.NewLen(50)
+
+	// email url
+	host := os.Getenv("URL")
+	url := host + "account/confirm-pass/" + token
+
+	// inser user to database
+	err := s.conn.ForgotToken(e, token)
+	if err != nil {
+		helper.ASM(w, 422, "an error occured")
+		return
+	}
+
+	// sending email
+	err = email.ForgotEmail(e, url)
+	if err != nil {
+		helper.ASM(w, 500, "an error occured while sending email")
+		return
+	}
+
+	helper.ASM(w, 200, "email has been sent to your account")
+}
+
+// ConfirmPassHandler - confirm pasword token - @GET - /account/confirm-pass/:token
+func (s *Account) ConfirmPassHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		helper.ASM(w, 405, "")
+		return
+	}
+
+	param := mux.Vars(r)
+	t := param["token"]
+
+	if t == "" {
+		helper.ASM(w, 403, "token is empty")
+		return
+	}
+
+	c, err := s.conn.ConfirmToken(t)
+	if err != nil {
+		helper.ASM(w, 422, err.Error())
+		return
+	}
+
+	if !c {
+		helper.ASM(w, 403, "token expired")
+		return
+	}
+
+	helper.ASM(w, 200, "token verified, type your new password")
+
+}
+
+// ResetHandler - resets the password - @PUT | @POST - /account/reset
+func (s *Account) ResetHandler(w http.ResponseWriter, r *http.Request) {
+	if s.store.AlreadyLoggedIn(r) {
+		helper.ASM(w, 401, "")
+		return
+	}
+
+	switch r.Method {
+	case "POST":
+		// Form value
+		t := r.FormValue("token")
+
+		if t == "" {
+			helper.ASM(w, 403, "token is empty")
+			return
+		}
+
+		c, err := s.conn.ConfirmToken(t)
+		if err != nil {
+			helper.ASM(w, 422, err.Error())
+			return
+		}
+
+		if !c {
+			helper.ASM(w, 403, "token expired")
+			return
+		}
+
+		helper.ASM(w, 200, "token verified, type your new password")
+
+	case "PUT":
+		p := r.FormValue("pass")
+		cp := r.FormValue("confirmPass")
+		t := r.FormValue("token")
+
+		if cp == "" || p == "" || t == "" {
+			helper.ASM(w, 204, "missing credentials")
+			return
+		}
+
+		if cp != p {
+			helper.ASM(w, 403, "password not match")
+			return
+		}
+
+		c, err := s.conn.ConfirmToken(t)
+		if err != nil {
+			helper.ASM(w, 422, err.Error())
+			return
+		}
+
+		if !c {
+			helper.ASM(w, 403, "token expired")
+			return
+		}
+
+		bs, errs := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+		if errs != nil {
+			helper.ASM(w, 500, "")
+			return
+		}
+
+		err = s.conn.ResetPass(string(bs), t)
+		if err != nil {
+			helper.ASM(w, 403, err.Error())
+			return
+		}
+
+		helper.ASM(w, 200, "your password changed")
+	default:
+		helper.ASM(w, 405, "")
 	}
 }
 
 // EmailAgain - send email again - /account/againemail
 func (s *Account) EmailAgain(w http.ResponseWriter, r *http.Request) {
-	helper.MethodCheck(w, r, "POST")
+	if r.Method != "POST" {
+		helper.ASM(w, 405, "")
+		return
+	}
 
 	if s.store.AlreadyLoggedIn(r) {
-		helper.UnauthorizedError(w)
+		helper.ASM(w, 401, "")
 		return
 	}
 
@@ -261,7 +445,7 @@ func (s *Account) EmailAgain(w http.ResponseWriter, r *http.Request) {
 	// get token from database
 	token, err := s.conn.GetToken(e)
 	if err != nil {
-		helper.NotFound(w, r)
+		helper.ASM(w, 404, err.Error())
 		return
 	}
 
@@ -270,9 +454,9 @@ func (s *Account) EmailAgain(w http.ResponseWriter, r *http.Request) {
 
 	err = email.SignUpEmail(e, n, url)
 	if err != nil {
-		helper.ServerError(w)
+		helper.ASM(w, 500, "")
 		return
 	}
 
-	helper.Ok(w, "email sent again")
+	helper.ASM(w, 200, "email sent again")
 }

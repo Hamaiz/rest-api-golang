@@ -1,7 +1,6 @@
 package serve
 
 import (
-	//	"log"
 	"net/http"
 
 	"github.com/Hamaiz/go-rest-eg/database"
@@ -30,6 +29,7 @@ func New() (*mux.Router, error) {
 
 	// subrouter - apiAccounts
 	apiAccounts := r.PathPrefix("/account").Subrouter()
+	apiFiles := r.PathPrefix("/api").Subrouter()
 
 	// middlewares
 	r.Use(middleware.LoggingMiddleware)
@@ -37,6 +37,7 @@ func New() (*mux.Router, error) {
 
 	// account router - /account
 	NewAccountSubRouter(apiAccounts, dbsess, conn)
+	NewFilesSubRouter(apiFiles, dbsess, conn)
 
 	// static files
 	helper.AllStaticFiles(r)

@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // User - login user
 type User struct {
 	Name       string `json:"name"`
@@ -25,6 +27,14 @@ type UserSend struct {
 type EmailToken struct {
 	Confirmed  bool
 	Expires    string
+	Token      string
+	Account_id string
+}
+
+// EmailDbToken
+type EmailDbToken struct {
+	Confirmed  bool
+	Expires    time.Time
 	Token      string
 	Account_id string
 }

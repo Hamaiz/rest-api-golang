@@ -1,52 +1,49 @@
 package helper
 
 import (
-	"encoding/json"
 	"net/http"
+	"strconv"
 )
-
-// Unauthorized = 405
-func NotAllowed(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusMethodNotAllowed)
-	w.Write([]byte(`{"status": "405", "message": "method not allowed"}`))
-}
-
-// Server Error = 500
-func ServerError(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	w.Write([]byte(`{"status": "500", "message": "internal server error"}`))
-}
-
-// Forbidden = 403
-func ForbiddenError(w http.ResponseWriter, err string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	if err == "" {
-		w.Write([]byte(`{"status": "403", "message": "forbidden"}`))
-	} else {
-		json.NewEncoder(w).Encode(map[string]string{"status": "403", "message": err})
-	}
-}
-
-// Unauthorized - 401
-func UnauthorizedError(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte(`{"status": "401", "message": "unauthorized"}`))
-}
-
-// Ok - 200
-func Ok(w http.ResponseWriter, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"200", "message": "` + msg + `"}`))
-}
 
 // Not Found - 404
 func NotFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte(`{"status": "404", "message": "not found"}`))
+}
+
+// status struct holds status msg
+type statusStruct struct {
+	status int
+	msg    string
+}
+
+// ASM - send any desired message
+func ASM(w http.ResponseWriter, s int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// status - map holds all status msgs
+	status := map[int]statusStruct{
+		200: {http.StatusOK, "ok"},
+		201: {http.StatusCreated, "created"},
+		204: {http.StatusNoContent, "no content"},
+		401: {http.StatusUnauthorized, "unauthorized"},
+		403: {http.StatusForbidden, "forbidden"},
+		404: {http.StatusNotFound, "not found"},
+		405: {http.StatusMethodNotAllowed, "method not allowed"},
+		409: {http.StatusConflict, "conflict"},
+		422: {http.StatusUnprocessableEntity, "unprocessable entity"},
+		500: {http.StatusInternalServerError, "internal server error"},
+	}
+
+	sm := status[s].msg
+
+	// status header
+	w.WriteHeader(status[s].status)
+
+	if msg != "" {
+		w.Write([]byte(`{"status": "` + strconv.Itoa(s) + `", "message": "` + msg + `"}`))
+	} else {
+		w.Write([]byte(`{"status": "` + strconv.Itoa(s) + `", "message": "` + sm + `"}`))
+	}
 }
