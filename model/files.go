@@ -18,3 +18,21 @@ type FilesComment struct {
 	Created_At  string `json:"createdAt"`
 	Updated_At  string `json:"updatedAt"`
 }
+
+// FilesSend - sending struct
+type FilesSend struct {
+	ID          string `json:"id"`
+	Question    string `json:"question"`
+	Slug        string `json:"slug"`
+	CreatedAt   string `json:"createdAt"`
+	Username    string `json:"username"`
+	Unique_Name string `json:"unqiueName"`
+}
+
+// LikeModel - get like
+type LikeModel struct {
+	question_id string `json:"questionId"`
+	user_id     string `json:"userId"`
+	likes       bool   `json:"like"`
+	dislike     bool   `json::dislike"`
+}

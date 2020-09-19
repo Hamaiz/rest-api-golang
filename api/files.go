@@ -14,14 +14,19 @@ import (
 
 // FilesDatabase - holds all the function - interface
 type FilesDatabase interface {
+	GetSearchedQuestions(l string) ([]model.FilesQuestion, error)
 	GetQuestions() ([]model.FilesQuestion, error)
 	PostQuestion(p model.FilesQuestion) error
+	GetQuest(s string) (model.FilesSend, error)
 	GetQuestion(s string) (model.FilesQuestion, error)
 	EditQuestion(s string, nq string, slug string) error
 	AddAnswer(a model.FilesComment) error
 	GetAnswer(s string, c string) (model.FilesComment, error)
 	EditAnswer(s string, na string) error
 	GetAnswers(s string) ([]model.FilesComment, error)
+	Like(id string, u string) error
+	Dislike(id string, u string) error
+	GetLikes(id string) (int, error)
 }
 
 // Account - account store struct
@@ -33,6 +38,30 @@ type Media struct {
 // NewAccountStore - creates new store
 func NewFilesApi(s AccountStore, c FilesDatabase) *Media {
 	return &Media{s, c}
+}
+
+// SearchQuestionHandler - search questions - @POST - /api/question
+func (m *Media) SearchQuestionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		helper.ASM(w, 405, "")
+		return
+	}
+
+	// FormValue
+	s := r.FormValue("search")
+
+	// extract all the important words
+	l := helper.KeyExtract(s)
+
+	// get question
+	fqs, err := m.conn.GetSearchedQuestions(l)
+	if err != nil {
+		helper.ASM(w, 403, err.Error())
+		return
+	} else {
+		json.NewEncoder(w).Encode(fqs)
+		return
+	}
 }
 
 // GetQuestionsHandler - get all questions - @GET - /api/question
@@ -77,7 +106,7 @@ func (m *Media) SendQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	slug := param["slug"]
 
 	// get question with slug
-	q, err := m.conn.GetQuestion(slug)
+	q, err := m.conn.GetQuest(slug)
 	if err != nil {
 		helper.ASM(w, 404, err.Error())
 		return

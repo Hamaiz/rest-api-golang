@@ -3,6 +3,7 @@ module github.com/Hamaiz/go-rest-eg
 go 1.14
 
 require (
+	github.com/afjoseph/RAKE.Go v0.0.0-20191109090147-068a9e43b194
 	github.com/dchest/uniuri v0.0.0-20200228104902-7aecb25e1fe5
 	github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8
 	github.com/google/uuid v1.1.1

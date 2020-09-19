@@ -20,6 +20,7 @@ func NewFilesSubRouter(s *mux.Router, dbsess *mgo.Session, conn *pgxpool.Pool) {
 	f := api.NewFilesApi(store, newFiles)
 
 	// Routes - /accounts
+	s.HandleFunc("/search", helper.JH(f.SearchQuestionHandler))
 	s.HandleFunc("/question", helper.JH(f.GetQuestionsHandler))
 	s.HandleFunc("/question/{slug}", helper.JH(f.SendQuestionHandler))
 	s.HandleFunc("/add-question", helper.JH(f.CreatePostHandler))
@@ -27,4 +28,7 @@ func NewFilesSubRouter(s *mux.Router, dbsess *mgo.Session, conn *pgxpool.Pool) {
 	s.HandleFunc("/answer/{slug}", helper.JH(f.SendAnswersHandler))
 	s.HandleFunc("/add-answer/{ans}", helper.JH(f.CreateAnswerHandler))
 	s.HandleFunc("/edit-answer/{ans}", helper.JH(f.EditAnswerHandler))
+	s.HandleFunc("/like", helper.JH(f.LikesHandler))
+	s.HandleFunc("/dislike", helper.JH(f.DislikesHandler))
+	s.HandleFunc("/get-likes", helper.JH(f.GetLikesHandler))
 }

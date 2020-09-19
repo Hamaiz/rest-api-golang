@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/Hamaiz/go-rest-eg/model"
@@ -18,6 +19,40 @@ type FilesDatabase struct {
 // NewFilesDatabase - new database
 func NewFilesDatabase(conn *pgxpool.Pool) *FilesDatabase {
 	return &FilesDatabase{conn}
+}
+
+// GetSearchedQuestions - gets all the searched question
+func (f *FilesDatabase) GetSearchedQuestions(l string) ([]model.FilesQuestion, error) {
+	fqs := make([]model.FilesQuestion, 0)
+
+	rows, err := f.conn.Query(context.Background(), `SELECT * FROM question WHERE question similar to '%(' || $1 || ')%'`, l)
+
+	switch {
+	case err == pgx.ErrNoRows:
+		err = errors.New("no questions found")
+		return fqs, err
+	case err != nil:
+		err = errors.New("an error occured")
+		return fqs, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		fq := model.FilesQuestion{}
+		err := rows.Scan(&fq.ID, &fq.Question, &fq.Poster, &fq.Slug, &fq.Created_At, &fq.Updated_At)
+
+		if err != nil {
+
+			err = errors.New("an error occured")
+			return fqs, err
+		}
+
+		fqs = append(fqs, fq)
+	}
+
+	return fqs, nil
+
 }
 
 // GetQuestions - get all questions
@@ -51,11 +86,30 @@ func (f *FilesDatabase) GetQuestions() ([]model.FilesQuestion, error) {
 	return fqs, nil
 }
 
-// AddPost - add posts to the database
+// PostQuestion - add posts to the database
 func (f *FilesDatabase) PostQuestion(p model.FilesQuestion) error {
 	_, err := f.conn.Exec(context.Background(), "INSERT INTO question (id, question, poster, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", p.ID, p.Question, p.Poster, p.Slug, p.Created_At, p.Updated_At)
 
 	return err
+}
+
+// GetQuest - get only one question
+func (f *FilesDatabase) GetQuest(s string) (model.FilesSend, error) {
+	fq := model.FilesSend{}
+
+	row := f.conn.QueryRow(context.Background(), "SELECT question.id, question, slug, created_at, username, unique_name FROM question JOIN account ON question.poster=account.id WHERE question.id=$1", s)
+	err := row.Scan(&fq.ID, &fq.Question, &fq.Slug, &fq.CreatedAt, &fq.Username, &fq.Unique_Name)
+
+	switch {
+	case err == pgx.ErrNoRows:
+		err = errors.New("no question found")
+		return fq, err
+	case err != nil:
+		err = errors.New("try again")
+		return fq, err
+	}
+
+	return fq, nil
 }
 
 // GetQuestion - gets the question by taking in slug
@@ -143,5 +197,94 @@ func (f *FilesDatabase) GetAnswers(s string) ([]model.FilesComment, error) {
 	}
 
 	return fcs, nil
+
+}
+
+// Like - add/remove like form the question
+func (f *FilesDatabase) Like(id string, u string) error {
+	ctx := context.Background()
+
+	var ui bool
+	err := f.conn.QueryRow(ctx, "SELECT likes FROM vote WHERE user_id=$1 AND question_id=$2", u, id).Scan(&ui)
+
+	//log.Println(err)
+	switch {
+	case err == pgx.ErrNoRows:
+		_, err = f.conn.Exec(ctx, "INSERT INTO vote (question_id, user_id, likes, dislike) VALUES ($1, $2, true, false)", id, u)
+		log.Println(err)
+		return err
+	case err != nil:
+		log.Println(err)
+		return err
+	}
+
+	if ui {
+		_, err = f.conn.Exec(ctx, "UPDATE vote SET likes=false, dislike=false WHERE user_id=$1 AND question_id=$2", u, id)
+
+		return err
+	}
+
+	_, err = f.conn.Exec(ctx, "UPDATE vote SET likes=true, dislike=false WHERE user_id=$1 AND question_id=$2", u, id)
+
+	return err
+
+}
+
+// Dislike - add/remove like form the question
+func (f *FilesDatabase) Dislike(id string, u string) error {
+	ctx := context.Background()
+
+	var ui bool
+	err := f.conn.QueryRow(ctx, "SELECT dislike FROM vote WHERE user_id=$1 AND question_id=$2", u, id).Scan(&ui)
+
+	switch {
+	case err == pgx.ErrNoRows:
+		_, err = f.conn.Exec(ctx, "INSERT INTO vote (question_id, user_id, likes, dislike) VALUES ($1, $2, false, true)", id, u)
+
+		return err
+	case err != nil:
+		return err
+	}
+
+	if ui {
+		_, err = f.conn.Exec(ctx, "UPDATE vote SET likes=false, dislike=false WHERE user_id=$1 AND question_id=$2", u, id)
+
+		return err
+	}
+
+	_, err = f.conn.Exec(ctx, "UPDATE vote SET likes=false, dislike=true WHERE user_id=$1 AND question_id=$2", u, id)
+
+	return err
+}
+
+// GetLikes - get all likes of a  post
+func (f *FilesDatabase) GetLikes(id string) (int, error) {
+	lms := make([]bool, 0)
+
+	rows, err := f.conn.Query(context.Background(), "SELECT likes FROM vote WHERE question_id=$1 AND likes=true", id)
+
+	switch {
+	case err == pgx.ErrNoRows:
+		err = errors.New("no answer found")
+		return 0, err
+	case err != nil:
+		err = errors.New("try again")
+		return 0, err
+	}
+
+	for rows.Next() {
+		var lm bool
+		err := rows.Scan(&lm)
+
+		if err != nil {
+			err = errors.New("an error occured")
+			return 0, err
+		}
+
+		lms = append(lms, lm)
+	}
+
+	likes := len(lms)
+	return likes, nil
 
 }
