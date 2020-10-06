@@ -17,21 +17,27 @@ type Server struct {
 	*http.Server
 }
 
-// NewServer - Starts the http server
-func NewServer() (*Server, error) {
-	log.Println("configuring server...")
+// init - run before the program starts
+func init() {
+	log.Println("configuring env files...")
 
 	// load godotenv
 	if err := godotenv.Load(); err != nil {
 		log.Printf(".env file not found: %v", err)
 	}
 
+	// switch between env files depending on enviornment
 	switch os.Getenv("APP_ENV") {
 	case "development":
 		godotenv.Load(".env.development")
 	case "production":
 		godotenv.Load(".env.production")
 	}
+}
+
+// NewServer - Starts the http server
+func NewServer() (*Server, error) {
+	log.Println("configuring server...")
 
 	// getting port from env variables
 	port := os.Getenv("PORT")

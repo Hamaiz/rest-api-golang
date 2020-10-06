@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/Hamaiz/go-rest-eg/model"
@@ -22,10 +21,12 @@ func NewFilesDatabase(conn *pgxpool.Pool) *FilesDatabase {
 }
 
 // GetSearchedQuestions - gets all the searched question
-func (f *FilesDatabase) GetSearchedQuestions(l string) ([]model.FilesQuestion, error) {
-	fqs := make([]model.FilesQuestion, 0)
+func (f *FilesDatabase) GetSearchedQuestions(l string) ([]model.GetQuestions, error) {
+	fqs := make([]model.GetQuestions, 0)
 
-	rows, err := f.conn.Query(context.Background(), `SELECT * FROM question WHERE question similar to '%(' || $1 || ')%'`, l)
+	//rows, err := f.conn.Query(context.Background(), `SELECT * FROM question WHERE question similar to '%(' || $1 || ')%'`, l)
+
+	rows, err := f.conn.Query(context.Background(), "SELECT question.id, question.question, question.poster, question.Slug, question.created_at, answer.answer FROM question LEFT JOIN answer ON question.id=answer.question_id WHERE question.question similar to '%(' || $1 || ')%'", l)
 
 	switch {
 	case err == pgx.ErrNoRows:
@@ -39,14 +40,30 @@ func (f *FilesDatabase) GetSearchedQuestions(l string) ([]model.FilesQuestion, e
 	defer rows.Close()
 
 	for rows.Next() {
-		fq := model.FilesQuestion{}
-		err := rows.Scan(&fq.ID, &fq.Question, &fq.Poster, &fq.Slug, &fq.Created_At, &fq.Updated_At)
+		fq := model.GetQuestions{}
+		var answer interface{}
+
+		err := rows.Scan(&fq.ID, &fq.Question, &fq.Poster, &fq.Slug, &fq.Created_At, &answer)
 
 		if err != nil {
 
 			err = errors.New("an error occured")
 			return fqs, err
 		}
+
+		var likes int
+		likes, err = f.GetLikes(fq.ID)
+		if err != nil {
+			return fqs, err
+		}
+
+		if answer == nil {
+			fq.Answer = "not answered yet"
+		} else {
+			fq.Answer = answer.(string)
+		}
+
+		fq.Likes = likes
 
 		fqs = append(fqs, fq)
 	}
@@ -56,10 +73,10 @@ func (f *FilesDatabase) GetSearchedQuestions(l string) ([]model.FilesQuestion, e
 }
 
 // GetQuestions - get all questions
-func (f *FilesDatabase) GetQuestions() ([]model.FilesQuestion, error) {
-	fqs := make([]model.FilesQuestion, 0)
+func (f *FilesDatabase) GetQuestions() ([]model.GetQuestions, error) {
+	fqs := make([]model.GetQuestions, 0)
 
-	rows, err := f.conn.Query(context.Background(), "SELECT * FROM question")
+	rows, err := f.conn.Query(context.Background(), "SELECT question.id, question.question, question.poster, question.Slug, question.created_at, answer.answer FROM question LEFT JOIN answer ON question.id=answer.question_id")
 	switch {
 	case err == pgx.ErrNoRows:
 		err = errors.New("no questions found")
@@ -72,14 +89,28 @@ func (f *FilesDatabase) GetQuestions() ([]model.FilesQuestion, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		fq := model.FilesQuestion{}
-		err := rows.Scan(&fq.ID, &fq.Question, &fq.Poster, &fq.Slug, &fq.Created_At, &fq.Updated_At)
+		fq := model.GetQuestions{}
+		var answer interface{}
+		err := rows.Scan(&fq.ID, &fq.Question, &fq.Poster, &fq.Slug, &fq.Created_At, &answer)
 
 		if err != nil {
 			err = errors.New("an error occured")
 			return fqs, err
 		}
 
+		var likes int
+		likes, err = f.GetLikes(fq.ID)
+		if err != nil {
+			return fqs, err
+		}
+
+		if answer == nil {
+			fq.Answer = "not answered yet"
+		} else {
+			fq.Answer = answer.(string)
+		}
+
+		fq.Likes = likes
 		fqs = append(fqs, fq)
 	}
 
@@ -97,7 +128,7 @@ func (f *FilesDatabase) PostQuestion(p model.FilesQuestion) error {
 func (f *FilesDatabase) GetQuest(s string) (model.FilesSend, error) {
 	fq := model.FilesSend{}
 
-	row := f.conn.QueryRow(context.Background(), "SELECT question.id, question, slug, created_at, username, unique_name FROM question JOIN account ON question.poster=account.id WHERE question.id=$1", s)
+	row := f.conn.QueryRow(context.Background(), "SELECT question.id, question, slug, created_at, username, unique_name FROM question JOIN account ON question.poster=account.id WHERE question.slug=$1", s)
 	err := row.Scan(&fq.ID, &fq.Question, &fq.Slug, &fq.CreatedAt, &fq.Username, &fq.Unique_Name)
 
 	switch {
@@ -160,6 +191,26 @@ func (f *FilesDatabase) GetAnswer(s string, c string) (model.FilesComment, error
 	return fc, err
 }
 
+func (f *FilesDatabase) GetOneAnswer(s string) (string, error) {
+	//fc := model.FilesComment{}
+	var ans string
+	row := f.conn.QueryRow(context.Background(), "SELECT answer FROM answer WHERE question_id=$1", s)
+
+	//err := row.Scan(&fc.Question_ID, &fc.Answer, &fc.Commenter, &fc.Created_At, &fc.Updated_At)
+	err := row.Scan(&ans)
+
+	switch {
+	case err == pgx.ErrNoRows:
+		err = errors.New("no answer found")
+		return "", err
+	case err != nil:
+		err = errors.New("error occured while getting answers")
+		return "", err
+	}
+
+	return ans, err
+}
+
 // EditAnswer - edits the quesiton
 func (f *FilesDatabase) EditAnswer(s string, na string) error {
 	t := time.Now().UTC().Format(time.RFC3339)
@@ -169,10 +220,10 @@ func (f *FilesDatabase) EditAnswer(s string, na string) error {
 }
 
 // GetAnswers - get all answers of question
-func (f *FilesDatabase) GetAnswers(s string) ([]model.FilesComment, error) {
-	fcs := make([]model.FilesComment, 0)
+func (f *FilesDatabase) GetAnswers(s string) ([]model.GetAnswers, error) {
+	fcs := make([]model.GetAnswers, 0)
 
-	rows, err := f.conn.Query(context.Background(), "SELECT * FROM answer WHERE question_id=$1", s)
+	rows, err := f.conn.Query(context.Background(), "SELECT answer.question_id, answer.answer, answer.created_at, account.username, account.unique_name FROM answer JOIN account ON answer.commenter=account.id WHERE answer.question_id=$1", s)
 
 	switch {
 	case err == pgx.ErrNoRows:
@@ -184,8 +235,8 @@ func (f *FilesDatabase) GetAnswers(s string) ([]model.FilesComment, error) {
 	}
 
 	for rows.Next() {
-		fc := model.FilesComment{}
-		err := rows.Scan(&fc.Question_ID, &fc.Answer, &fc.Commenter, &fc.Created_At, &fc.Updated_At)
+		fc := model.GetAnswers{}
+		err := rows.Scan(&fc.Question_ID, &fc.Answer, &fc.Created_At, &fc.Username, &fc.Unique_Name)
 
 		if err != nil {
 			err = errors.New("an error occured")
@@ -207,14 +258,11 @@ func (f *FilesDatabase) Like(id string, u string) error {
 	var ui bool
 	err := f.conn.QueryRow(ctx, "SELECT likes FROM vote WHERE user_id=$1 AND question_id=$2", u, id).Scan(&ui)
 
-	//log.Println(err)
 	switch {
 	case err == pgx.ErrNoRows:
 		_, err = f.conn.Exec(ctx, "INSERT INTO vote (question_id, user_id, likes, dislike) VALUES ($1, $2, true, false)", id, u)
-		log.Println(err)
 		return err
 	case err != nil:
-		log.Println(err)
 		return err
 	}
 

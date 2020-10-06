@@ -51,6 +51,9 @@ touch .env.development
 - GM_EMAIL= (Gmail email)
 - GM_PASS= (Gmail password)
 - URL= (URL for emailing)
+- FRONTEND=
+- GOOGLE_CLIENT_ID=
+- GOOGLE_CLIENT_SECRET=
 
 6. Run main.go file
 

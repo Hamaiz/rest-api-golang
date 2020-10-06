@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/Hamaiz/go-rest-eg/model"
@@ -181,7 +180,6 @@ func (a *AccountDatabase) ForgotToken(e string, token string) error {
 	_, err = a.conn.Exec(context.Background(), "UPDATE addition SET token=$1, expires=$2 WHERE account_id=$3", token, t, id)
 
 	if err != nil {
-		log.Println(err)
 		return err
 	}
 
@@ -226,9 +224,8 @@ func (a *AccountDatabase) ResetPass(p string, t string) error {
 		return err
 	}
 
-	_, err = a.conn.Exec(context.Background(), "UPDATE account SET password=$1 WHERE id=$2", p, id)
+	_, err = a.conn.Exec(context.Background(), "UPDATE account SET password=$1 WHERE id=$1", p, id)
 	if err != nil {
-		log.Println(err)
 		err = errors.New("error occured changing password")
 		return err
 	}

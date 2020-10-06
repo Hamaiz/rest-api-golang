@@ -27,16 +27,17 @@ func New() (*mux.Router, error) {
 	// initializing mux router
 	r := mux.NewRouter()
 
-	// subrouter - apiAccounts
-	apiAccounts := r.PathPrefix("/account").Subrouter()
-	apiFiles := r.PathPrefix("/api").Subrouter()
-
 	// middlewares
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.UsefulHeaders)
 
+	// subrouter - apiAccounts
+	apiAccounts := r.PathPrefix("/account").Subrouter()
+	apiFiles := r.PathPrefix("/api").Subrouter()
+
 	// account router - /account
 	NewAccountSubRouter(apiAccounts, dbsess, conn)
+	NewOauthSubRouter(apiAccounts, dbsess, conn)
 	NewFilesSubRouter(apiFiles, dbsess, conn)
 
 	// static files

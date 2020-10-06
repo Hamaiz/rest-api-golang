@@ -48,7 +48,7 @@ func NewAccountStore(s AccountStore, c AccountDatabase) *Account {
 	return &Account{s, c}
 }
 
-// SignUpHandler - signing in route - /account/signup
+// SignUpHandler - signing in route - @POST - /account/signup
 func (s *Account) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		helper.ASM(w, 405, "")
@@ -117,7 +117,7 @@ func (s *Account) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	helper.ASM(w, 200, "verify email to continue")
 }
 
-// LogInHandler - logging in route - /account/login
+// LogInHandler - logging in route - @POST - /account/login
 func (s *Account) LogInHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		helper.ASM(w, 405, "")
@@ -140,19 +140,19 @@ func (s *Account) LogInHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	confirm := s.conn.LoginConfirm(e)
-	if !confirm {
-		helper.ASM(w, 403, "confirm your email to continue")
-		return
-	}
-
 	u, err := s.conn.GetUserInLogin(e)
 	switch {
 	case err == pgx.ErrNoRows:
-		helper.ASM(w, 404, "")
+		helper.ASM(w, 404, "email not found")
 		return
 	case err != nil:
 		helper.ASM(w, 500, "")
+		return
+	}
+
+	confirm := s.conn.LoginConfirm(e)
+	if !confirm {
+		helper.ASM(w, 403, "confirm your email to continue")
 		return
 	}
 
@@ -173,7 +173,7 @@ func (s *Account) LogInHandler(w http.ResponseWriter, r *http.Request) {
 	helper.ASM(w, 200, "logged in successfully")
 }
 
-// LogoutHandler - logs user out & removes cookie - /account/logout
+// LogoutHandler - logs user out & removes cookie - @DELETE - /account/logout
 func (s *Account) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "DELETE" {
 		helper.ASM(w, 405, "")
@@ -196,80 +196,92 @@ func (s *Account) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	helper.ASM(w, 200, "logged out")
 }
 
-// GetUserHandler - sends user - /account/getUser
+// GetUserHandler - sends user - @GET | @OPTIONS - /account/getUser
 func (s *Account) GetUserHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
+	switch r.Method {
+	case "GET":
+		// get and check for header
+		fgu := r.Header.Get("files-get-user")
+		if fgu == "" {
+			helper.ASM(w, 401, "")
+			return
+		}
+
+		if !s.store.AlreadyLoggedIn(r) {
+			helper.ASM(w, 401, "you are not logged in")
+			return
+		}
+
+		// get user id
+		id, err := s.store.GetUser(r)
+		if err != nil {
+			helper.ASM(w, 404, "")
+			return
+		}
+
+		// get user from database
+		var u model.UserSend
+		u, err = s.conn.GetUser(id)
+		if err != nil {
+			log.Println(err)
+			helper.ASM(w, 404, "")
+			return
+		}
+
+		json.NewEncoder(w).Encode(u)
+		return
+	case "OPTIONS":
+		helper.ASM(w, 204, "")
+		return
+	default:
 		helper.ASM(w, 405, "")
 		return
 	}
 
-	// get and check for header
-	fgu := r.Header.Get("files-get-user")
-	if fgu == "" {
-		helper.ASM(w, 401, "")
-		return
-	}
-
-	if !s.store.AlreadyLoggedIn(r) {
-		helper.ASM(w, 401, "you are not logged in")
-		return
-	}
-
-	// get user id
-	id, err := s.store.GetUser(r)
-	if err != nil {
-		helper.ASM(w, 404, "")
-		return
-	}
-
-	// get user from database
-	var u model.UserSend
-	u, err = s.conn.GetUser(id)
-	if err != nil {
-		log.Println(err)
-		helper.ASM(w, 404, "")
-		return
-	}
-
-	json.NewEncoder(w).Encode(u)
 }
 
-// ConfirmEmailHandler - confirms the email - /account/confirm/:token
+// ConfirmEmailHandler - confirms the email - @GET | @OPTIONS - /account/confirm/:token
 func (s *Account) ConfirmEmailHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
+	switch r.Method {
+	case "GET":
+		// check if already logged in
+		if s.store.AlreadyLoggedIn(r) {
+			helper.ASM(w, 401, "")
+			return
+		}
+
+		// get params & check for token
+		param := mux.Vars(r)
+		token := param["token"]
+
+		if token == "" {
+			helper.ASM(w, 404, "")
+			return
+		}
+
+		confirm, err := s.conn.ConfirmEmail(token)
+
+		if err != nil {
+			helper.ASM(w, 403, err.Error())
+			return
+		}
+
+		if confirm {
+			helper.ASM(w, 200, "email is confirmed")
+			return
+		} else {
+			helper.ASM(w, 403, "token expired")
+			return
+		}
+		return
+	case "OPTIONS":
+		helper.ASM(w, 204, "")
+		return
+	default:
 		helper.ASM(w, 405, "")
 		return
 	}
 
-	// check if already logged in
-	if s.store.AlreadyLoggedIn(r) {
-		helper.ASM(w, 401, "")
-		return
-	}
-
-	// get params & check for token
-	param := mux.Vars(r)
-	token := param["token"]
-
-	if token == "" {
-		helper.ASM(w, 404, "")
-		return
-	}
-
-	confirm, err := s.conn.ConfirmEmail(token)
-
-	if err != nil {
-		helper.ASM(w, 403, err.Error())
-		return
-	}
-
-	if confirm {
-		helper.ASM(w, 200, "email is confirmed")
-		return
-	} else {
-		helper.ASM(w, 403, "token expired")
-		return
-	}
 }
 
 // ForgotHandler - forget handler - @POST - /account/forgot
@@ -322,34 +334,40 @@ func (s *Account) ForgotHandler(w http.ResponseWriter, r *http.Request) {
 	helper.ASM(w, 200, "email has been sent to your account")
 }
 
-// ConfirmPassHandler - confirm pasword token - @GET - /account/confirm-pass/:token
+// ConfirmPassHandler - confirm pasword token - @GET | @OPTIONS - /account/confirm-pass/:token
 func (s *Account) ConfirmPassHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
+	switch r.Method {
+	case "GET":
+
+		param := mux.Vars(r)
+		t := param["token"]
+
+		if t == "" {
+			helper.ASM(w, 403, "token is empty")
+			return
+		}
+
+		c, err := s.conn.ConfirmToken(t)
+		if err != nil {
+			helper.ASM(w, 422, err.Error())
+			return
+		}
+
+		if !c {
+			helper.ASM(w, 403, "token expired")
+			return
+		}
+
+		helper.ASM(w, 200, "token verified, type your new password")
+
+		return
+	case "OPTIONS":
+		helper.ASM(w, 204, "")
+		return
+	default:
 		helper.ASM(w, 405, "")
 		return
 	}
-
-	param := mux.Vars(r)
-	t := param["token"]
-
-	if t == "" {
-		helper.ASM(w, 403, "token is empty")
-		return
-	}
-
-	c, err := s.conn.ConfirmToken(t)
-	if err != nil {
-		helper.ASM(w, 422, err.Error())
-		return
-	}
-
-	if !c {
-		helper.ASM(w, 403, "token expired")
-		return
-	}
-
-	helper.ASM(w, 200, "token verified, type your new password")
-
 }
 
 // ResetHandler - resets the password - @PUT | @POST - /account/reset
@@ -426,7 +444,7 @@ func (s *Account) ResetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// EmailAgain - send email again - /account/againemail
+// EmailAgain - send email again - @POST - /account/againemail
 func (s *Account) EmailAgain(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		helper.ASM(w, 405, "")

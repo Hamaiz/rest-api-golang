@@ -121,5 +121,5 @@ func (m *Media) GetLikesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte(`{"likes":` + strconv.Itoa(likes) + `}`))
+	w.Write([]byte(strconv.Itoa(likes)))
 }

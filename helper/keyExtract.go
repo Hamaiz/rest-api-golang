@@ -10,6 +10,9 @@ func KeyExtract(t string) string {
 	// trim the string value
 	t = strings.TrimSpace(t)
 
+	// make string lowercase
+	t = strings.ToLower(t)
+
 	// remove charcters from string
 	reg, _ := regexp.Compile(`[^a-zA-Z0-9\s]+]`)
 	s := reg.ReplaceAllString(t, "")
